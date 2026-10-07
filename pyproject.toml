@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amadeus-discord"
+version = "0.1.0"
+description = "An Amadeus-themed Discord assistant for polls and meeting scheduling"
+requires-python = ">=3.12"
+dependencies = [
+  "discord.py[voice]>=2.7,<3",
+  "discord-ext-voice-recv",
+  "mlx-audio[stt]>=0.3.1,<1",
+  "webrtcvad-wheels>=2.0.14,<3",
+  "aiohttp>=3.12,<4",
+  "python-dotenv>=1.1,<2",
+  "tzdata>=2025.2",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.11,<1"]
+
+[project.scripts]
+amadeus = "amadeus.bot:main"
+amadeus-models = "amadeus.local_models:prepare"
+amadeus-progress = "amadeus.progress:main"
+
+[tool.uv.sources]
+discord-ext-voice-recv = { git = "https://github.com/rdphillips7/discord-ext-voice-recv.git", rev = "ddd28601fe556f585b869e215f29c8236b95f88f" }
+
+[tool.setuptools.packages.find]
+include = ["amadeus*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# discord.py evaluates command annotations at runtime.
+ignore = ["UP045"]
