@@ -37,4 +37,6 @@ def configure_logging():
     logging.getLogger("discord.ext.voice_recv").setLevel(logging.WARNING)
     logging.getLogger("mlx_audio").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("ddgs").setLevel(logging.WARNING)
+    logging.getLogger("primp").setLevel(logging.WARNING)
     return path

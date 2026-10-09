@@ -15,6 +15,11 @@ dependencies = [
   "aiohttp>=3.12,<4",
   "python-dotenv>=1.1,<2",
   "tzdata>=2025.2",
+  "ddgs>=9,<10",
+  "trafilatura>=2,<3",
+  "lxml>=5,<7",
+  "icalendar>=6,<8",
+  "primp>=2,<3",
 ]
 
 [dependency-groups]

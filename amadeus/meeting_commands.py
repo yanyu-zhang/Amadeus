@@ -128,7 +128,7 @@ def register_meeting_commands(bot):
         await interaction.response.send_message(text, ephemeral=True)
 
     @group.command(name="summary", description="重试本地总结，或恢复重启前的已保存会议记录")
-    @app_commands.describe(meeting_id="会议 ID；省略则使用本服务器最近一场会议")
+    @app_commands.describe(meeting_id="开始时间戳会议 ID（也支持旧 ID）；省略则使用最近一场会议")
     async def summary(interaction: discord.Interaction, meeting_id: str = ""):
         try:
             meeting = bot.meetings.find(interaction.guild_id, meeting_id or None)

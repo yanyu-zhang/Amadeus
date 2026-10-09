@@ -12,6 +12,8 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
+from .factcheck import FactChecker, register_factcheck_command
+from .finance import FinanceCalendar, register_finance_command
 from .logging_setup import configure_logging
 from .meeting_commands import register_meeting_commands
 from .meetings import MeetingManager
@@ -33,8 +35,12 @@ class Amadeus(discord.Client):
         self.timezone = timezone
         self.http_session: Optional[aiohttp.ClientSession] = None
         self.meetings = MeetingManager(self)
+        self.factchecker = FactChecker(self.meetings.models, timezone)
+        self.finance = FinanceCalendar(timezone)
         register_commands(self)
         register_meeting_commands(self)
+        register_factcheck_command(self)
+        register_finance_command(self)
         self.tree.error(self.command_error)
 
     async def setup_hook(self):
@@ -42,9 +48,15 @@ class Amadeus(discord.Client):
         if self.guild_id:
             guild = discord.Object(id=self.guild_id)
             self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
+            synced = await self.tree.sync(guild=guild)
         else:
-            await self.tree.sync()
+            synced = await self.tree.sync()
+        LOG.info(
+            "Slash commands 已同步 count=%d factcheck=%s finance=%s",
+            len(synced),
+            any(command.name == "factcheck" for command in synced),
+            any(command.name == "finance" for command in synced),
+        )
 
     async def on_ready(self):
         await self.change_presence(activity=discord.Game(name="Amadeus 在线 · /help"))
@@ -189,6 +201,8 @@ def register_commands(bot: Amadeus):
                 "**/meeting stop** — 停止记录并生成中文总结。\n"
                 "**/meeting status** — 查看录音和转写状态。\n"
                 "**/meeting summary** — 重试总结或恢复已保存的记录。\n\n"
+                "**/factcheck** — 输入一条待核实的说法，联网查证并提供来源。\n\n"
+                "**/finance** — 本周＋下周的美联储、重要经济数据与指数成分股财报；周日开始。\n\n"
                 "投票和排期会公开发布在当前频道。投票选择不是匿名的；"
                 "排期参与者在 When2meet 页面填写可用时间。"
             ),

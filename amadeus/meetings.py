@@ -3,19 +3,35 @@ import ctypes.util
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import voice_recv
 
-from .capture import AudioChunk, MeetingSink
+from .capture import CHUNK_SECONDS, AudioChunk, MeetingSink
 from .local_models import LocalModels
 
 LOG = logging.getLogger(__name__)
+MEETING_ID_FORMAT = "%Y-%m-%d_%H-%M-%S_UTC%z"
+
+
+def valid_meeting_id(value):
+    # Existing saved meetings remain accessible by their original IDs.
+    if re.fullmatch(r"[0-9a-f]{12}", value):
+        return True
+    match = re.fullmatch(r"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_UTC[+-]\d{4})(?:_[1-9]\d*)?", value)
+    if match is None:
+        return False
+    try:
+        datetime.strptime(match[1], "%Y-%m-%d_%H-%M-%S_UTC%z")
+    except ValueError:
+        return False
+    return True
 
 
 def load_opus():
@@ -70,6 +86,7 @@ class MeetingManager:
     def __init__(self, bot, root=None, models=None):
         self.bot = bot
         self.root = Path(root or "data/meetings")
+        self.timezone = ZoneInfo(getattr(bot, "timezone", "America/Los_Angeles"))
         self.models = models or LocalModels()
         self.active = {}
         self.sessions = {}
@@ -78,6 +95,21 @@ class MeetingManager:
 
     def guild_lock(self, guild_id):
         return self.locks.setdefault(guild_id, asyncio.Lock())
+
+    def _create_directory(self, started_at):
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.root.chmod(0o700)
+        timestamp = started_at.astimezone(self.timezone).strftime(MEETING_ID_FORMAT)
+        attempt = 1
+        while True:
+            name = timestamp if attempt == 1 else f"{timestamp}_{attempt}"
+            directory = self.root / name
+            try:
+                directory.mkdir(mode=0o700)
+                return directory
+            except FileExistsError:
+                # Simultaneous starts in different guilds must not share recordings.
+                attempt += 1
 
     async def start(self, guild, voice_channel, text_channel, owner, title):
         async with self.guild_lock(guild.id):
@@ -96,10 +128,8 @@ class MeetingManager:
                 "准备开始会议 guild=%s voice_channel=%s，检查本地模型", guild.id, voice_channel.id
             )
             await self.models.ready(self.bot.http_session)
-            directory = self.root / uuid4().hex[:12]
-            directory.mkdir(parents=True, mode=0o700)
-            # Restrict both root and session directory to the local account.
-            self.root.chmod(0o700)
+            started_at = datetime.now(UTC)
+            directory = self._create_directory(started_at)
             metadata = {
                 "id": directory.name,
                 "guild_id": guild.id,
@@ -107,7 +137,8 @@ class MeetingManager:
                 "voice_channel_id": voice_channel.id,
                 "text_channel_id": text_channel.id,
                 "title": title,
-                "started_at": datetime.now(UTC).isoformat(),
+                "started_at": started_at.isoformat(),
+                "timezone": self.timezone.key,
                 "status": "connecting",
             }
             meeting = Meeting(directory, metadata)
@@ -158,7 +189,9 @@ class MeetingManager:
                 meeting.persist()
                 meeting.ticker = asyncio.create_task(self._ticker(meeting))
                 meeting.ticker.add_done_callback(self._task_done)
-                LOG.info("meeting=%s 已开始收音，每 30 秒分段，转写在后台运行", meeting.id)
+                LOG.info(
+                    "meeting=%s 已开始收音，每 %d 秒分段，转写在后台运行", meeting.id, CHUNK_SECONDS
+                )
             except Exception:
                 LOG.exception("meeting=%s 语音连接失败", meeting.id)
                 self.active.pop(guild.id, None)
@@ -318,7 +351,7 @@ class MeetingManager:
         if meeting_id is None:
             paths = self.root.glob("*/meeting.json")
         else:
-            if not (len(meeting_id) == 12 and all(c in "0123456789abcdef" for c in meeting_id)):
+            if not valid_meeting_id(meeting_id):
                 raise RuntimeError("会议 ID 格式不正确。")
             paths = [self.root / meeting_id / "meeting.json"]
         candidates = []

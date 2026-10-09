@@ -13,7 +13,7 @@ from discord.ext import voice_recv
 RATE = 48000
 CHANNELS = 2
 FRAME_BYTES = 4  # 16-bit stereo
-CHUNK_SECONDS = 30
+CHUNK_SECONDS = 60
 LOG = logging.getLogger(__name__)
 
 
